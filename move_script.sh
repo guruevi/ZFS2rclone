@@ -11,5 +11,5 @@ while [ `ls $DESTPATH/$NAME/$SNAPSHOT | wc -l` -gt 16 ]; do
     echo "Waiting for free space"
 done
 
-mv $DESTPATH/$NAME/tapedev $DESTPATH/$NAME/$SNAPSHOT/$NOW
+mv $DESTPATH/$NAME/tapedev $DESTPATH/$NAME/$SNAPSHOT/$NOW || exit 1
 touch $DESTPATH/$NAME/tapedev
