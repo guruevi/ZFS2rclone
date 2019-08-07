@@ -1,12 +1,12 @@
 #!/bin/bash
+# $NAME $CURRENTSNAP $DESTPATH $NUM_TAPES
 NOW=`perl -MTime::HiRes=gettimeofday -MPOSIX=strftime -e '($s,$us) = gettimeofday(); printf "%d.%06d\n", $s, $us'`
 NAME=$1
 SNAPSHOT=$2
+DESTPATH=$3
+NUM_TAPES=$4
 
-DEBUG="-vvvv --stats=30s"
-DESTPATH="/mnt/Backup/tapes"
-
-while [ `ls $DESTPATH/$NAME/$SNAPSHOT | wc -l` -gt 16 ]; do
+while [ `ls $DESTPATH/$NAME/$SNAPSHOT | wc -l` -gt $NUM_TAPES ]; do
     sleep 5
     echo "Waiting for free space"
 done
