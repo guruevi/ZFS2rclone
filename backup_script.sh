@@ -11,14 +11,16 @@ if [[ -z $NAME ]]; then
 fi
 
 # TODO: Perhaps we should save/query LASTSNAP on the remote?
+mkdir -p ${DESTPATH}/${NAME}
+touch ${DESTPATH}/${NAME}/lastsnap
 LASTSNAP=`cat ${DESTPATH}/${NAME}/lastsnap 2>/dev/null`
+
 TAPESIZE="16G" #Set this to the smaller number of what your system can handle and your destination allows
 NUM_TAPES=256
 
-mkdir -p $DESTPATH/$NAME
 zfs list -Hpr $NAME > $DESTPATH/$NAME/volume_list
 zfs list -Hpr -t snapshot -d 1 $NAME > $DESTPATH/$NAME/snapshot_list
-CURRENTSNAP=`cat $DESTPATH/$NAME/snapshot_list | tail -n 1 | awk -F"[@\s\t]" '{ print $2 }'`
+CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
 
 # Find out if we ran this before
 if [[ ! -z $LASTSNAP ]]; then
