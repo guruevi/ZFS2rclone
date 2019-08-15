@@ -22,13 +22,18 @@ zfs list -Hpr $NAME > $DESTPATH/$NAME/volume_list
 zfs list -Hpr -t snapshot -d 1 $NAME > $DESTPATH/$NAME/snapshot_list
 CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
 
+if [[ -z $CURRENTSNAP ]]; then
+  echo "There are no snapshots for this volume"
+  exit 1
+fi
+
 # Find out if we ran this before
 if [[ ! -z $LASTSNAP ]]; then
   echo Last snapshot: $LASTSNAP
   INCREMENT="-i $LASTSNAP"
   if [[ $CURRENTSNAP = $LASTSNAP ]]; then
      echo "Snapshot is the same as the last backup"
-     exit 1
+     exit 0
   fi
 else
   INCREMENT=""
