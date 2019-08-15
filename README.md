@@ -9,7 +9,4 @@ It simply calls ZFS send into mbuffer, which halts the stream when the maximum f
 You can thus stream and perhaps even replicate a server using any Cloud Storage platform rclone supports. This is only effective as long as your bandwidth can keep up with the changes on the disk, you should play with the number of transfers and buffer sizes for rclone as they can impact your upload speed immensely.
 
 TODO:
-Fully automate a server backup
-Create a FREENAS helper jail with all the necessary software or even just the mbuffer-rclone daemon.
-Various TODO's are documented in the script
 Write a helper script to pull down the data and re-assemble it. It works when I do it manually. Hint: rclone cat
