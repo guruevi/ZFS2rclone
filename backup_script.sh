@@ -53,5 +53,5 @@ zfs send $INCREMENT $NAME@$CURRENTSNAP | $MBUFFERPATH -o $DESTPATH/$NAME/tapedev
 $MOVE_CMD
 $SEND_CMD 1
 echo $CURRENTSNAP > $DESTPATH/$NAME/lastsnap
-rclone copy --ignore-checksum $DESTPATH/$NAME/lastsnap RCBI-S3DG:/rcbi/$NAME/
+rclone copy --ignore-checksum $DESTPATH/$NAME/lastsnap $REMOTE
 rm $DESTPATH/$NAME/tapedev
