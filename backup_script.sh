@@ -30,7 +30,7 @@ fi
 # Find out if we ran this before
 if [[ ! -z $LASTSNAP ]]; then
   echo Last snapshot: $LASTSNAP
-  INCREMENT="-i $LASTSNAP"
+  INCREMENT="-I $LASTSNAP"
   if [[ $CURRENTSNAP = $LASTSNAP ]]; then
      echo "Snapshot is the same as the last backup"
      exit 0
