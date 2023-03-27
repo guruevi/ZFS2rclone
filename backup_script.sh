@@ -1,9 +1,11 @@
 #!/bin/bash
 NAME=$1
-SCRIPTPATH=/mnt/Backup/ZFS2rclone
-DESTPATH=/mnt/Backup/tmp
-DESTVOL=Backup/tmp
-MBUFFERPATH=/usr/local/bin/mbuffer
+SCRIPTPATH=~/code/ZFS2rclone
+DESTPATH=/tmp/backup
+MBUFFERPATH=/usr/bin/mbuffer
+TAPESIZE="4G" #Set this to the smaller number of what your system can handle and your destination allows
+NUM_TAPES=5
+
 
 if [[ -z $NAME ]]; then
    echo "No ZFS Volume specified"
@@ -15,12 +17,10 @@ mkdir -p ${DESTPATH}/${NAME}
 touch ${DESTPATH}/${NAME}/lastsnap
 LASTSNAP=`cat ${DESTPATH}/${NAME}/lastsnap 2>/dev/null`
 
-TAPESIZE="16G" #Set this to the smaller number of what your system can handle and your destination allows
-NUM_TAPES=256
 
-zfs list -Hpr $NAME > $DESTPATH/$NAME/volume_list
 zfs list -Hpr -t snapshot -d 1 $NAME > $DESTPATH/$NAME/snapshot_list
 CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
+
 
 if [[ -z $CURRENTSNAP ]]; then
   echo "There are no snapshots for this volume"
