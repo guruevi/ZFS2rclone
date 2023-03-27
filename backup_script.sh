@@ -5,7 +5,7 @@ DESTPATH=/tmp/backup
 MBUFFERPATH=/usr/bin/mbuffer
 TAPESIZE="4G" #Set this to the smaller number of what your system can handle and your destination allows
 NUM_TAPES=5
-REMOTE=$1
+REMOTE=$2
 
 if [[ -z $NAME ]]; then
    echo "No ZFS Volume specified"
