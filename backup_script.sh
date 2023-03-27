@@ -5,7 +5,7 @@ DESTPATH=/tmp/backup
 MBUFFERPATH=/usr/bin/mbuffer
 TAPESIZE="4G" #Set this to the smaller number of what your system can handle and your destination allows
 NUM_TAPES=5
-
+REMOTE=$1
 
 if [[ -z $NAME ]]; then
    echo "No ZFS Volume specified"
@@ -49,7 +49,7 @@ set -e
 
 echo $DESTPATH/$NAME/$CURRENTSNAP
 mkdir -p $DESTPATH/$NAME/$CURRENTSNAP
-zfs send $INCREMENT $NAME@$CURRENTSNAP | xz -zc | $MBUFFERPATH -o $DESTPATH/$NAME/tapedev -D $TAPESIZE -A "$MOVE_CMD && $SEND_CMD"
+zfs send $INCREMENT $NAME@$CURRENTSNAP | $MBUFFERPATH -o $DESTPATH/$NAME/tapedev -D $TAPESIZE -A "$MOVE_CMD && $SEND_CMD $REMOTE"
 $MOVE_CMD
 $SEND_CMD 1
 echo $CURRENTSNAP > $DESTPATH/$NAME/lastsnap
