@@ -1,8 +1,8 @@
 #!/bin/bash
 DEBUG="-vvvv --stats=30s"
 DESTPATH=$1
-WAIT=$2
-REMOTE=$3
+WAIT=$3
+REMOTE=$2
 
 COMMAND="rclone $DEBUG --ignore-checksum --fast-list --s3-upload-concurrency=8 --s3-chunk-size=64M --update --use-server-modtime --low-level-retries=100 --exclude=tapedev --exclude=lastsnap --buffer-size=64M move $DESTPATH $REMOTE" 
 
