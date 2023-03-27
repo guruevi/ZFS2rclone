@@ -44,12 +44,12 @@ echo Current snapshot: $CURRENTSNAP
 #TODO: IF Remote $SNAPSHOT already exist, most likely that's a previous failure. Move or delete that remote snapshot and rewrite it from scratch
 
 MOVE_CMD="$SCRIPTPATH/move_script.sh $NAME $CURRENTSNAP $DESTPATH $NUM_TAPES" 
-SEND_CMD="$SCRIPTPATH/send_script.sh $DESTPATH"
+SEND_CMD="$SCRIPTPATH/send_script.sh $DESTPATH $REMOTE"
 set -e
 
 echo $DESTPATH/$NAME/$CURRENTSNAP
 mkdir -p $DESTPATH/$NAME/$CURRENTSNAP
-zfs send $INCREMENT $NAME@$CURRENTSNAP | $MBUFFERPATH -o $DESTPATH/$NAME/tapedev -D $TAPESIZE -A "$MOVE_CMD && $SEND_CMD $REMOTE"
+zfs send $INCREMENT $NAME@$CURRENTSNAP | $MBUFFERPATH -o $DESTPATH/$NAME/tapedev -D $TAPESIZE -A "$MOVE_CMD && $SEND_CMD"
 $MOVE_CMD
 $SEND_CMD 1
 echo $CURRENTSNAP > $DESTPATH/$NAME/lastsnap
