@@ -2,9 +2,9 @@
 NAME=$1
 SCRIPTPATH=~/code/ZFS2rclone
 DESTPATH=/tmp/backup
-MBUFFERPATH=/usr/bin/mbuffer
-TAPESIZE="4G" #Set this to the smaller number of what your system can handle and your destination allows
-NUM_TAPES=5
+MAX_TEMP_FILES=10
+MAX_ARCHIVE_SIZE=4
+
 REMOTE=$2
 
 if [[ -z $NAME ]]; then
@@ -12,7 +12,6 @@ if [[ -z $NAME ]]; then
    exit 1
 fi
 
-# TODO: Perhaps we should save/query LASTSNAP on the remote?
 mkdir -p ${DESTPATH}/${NAME}
 touch ${DESTPATH}/${NAME}/lastsnap
 LASTSNAP=`cat ${DESTPATH}/${NAME}/lastsnap 2>/dev/null`
@@ -43,25 +42,66 @@ echo Current snapshot: $CURRENTSNAP
 
 #TODO: IF Remote $SNAPSHOT already exist, most likely that's a previous failure. Move or delete that remote snapshot and rewrite it from scratch
 
-MOVE_CMD="$SCRIPTPATH/move_script.sh $NAME $CURRENTSNAP $DESTPATH $NUM_TAPES" 
-SEND_CMD="$SCRIPTPATH/send_script.sh $DESTPATH $REMOTE"
-
 SNAP_SEND_CMD="zfs send $INCREMENT $NAME@$CURRENTSNAP"
-COMPRESSS_CMD="xz -zc -"
-MBUFFER_CMD="$MBUFFERPATH -o $DESTPATH/$NAME/tapedev -D $TAPESIZE -A \"$MOVE_CMD && $SEND_CMD\""
 
-if [[ -z "$COMPRESS" ]]; then
-    BACKUP_CMD="$SNAP_SEND_CMD | $MBUFFER_CMD"
-else
-    BACKUP_CMD="$SNAP_SEND_CMD | $COMPRESS_CMD | $MBUFFER_CMD"
-fi
-set -e
+export ARCHIVE_SAVE_PATH="$DESTPATH/$NAME/$CURRENTSNAP"
+mkdir -p $ARCHIVE_SAVE_PATH
+export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
-echo $DESTPATH/$NAME/$CURRENTSNAP
-mkdir -p $DESTPATH/$NAME/$CURRENTSNAP
+save_archive_to_disk () {
+    ret=9999999
+    while [ $ret -gt 5 ]; do
+	ret=$(ls $ARCHIVE_SAVE_PATH/*.par 2>/dev/null | wc -l)
+	echo "waiting for more space" 1>&2
+	sleep 5;
+    done
+
+    /bin/cat - > $ARCHIVE_SAVE_PATH/$1.par
+    echo "$1.par saved to disk." 1>&2
+    echo "$1.par"
+}
+
+export -f save_archive_to_disk
+
+send_file_and_monitor () {
+    FILEPATH=$1
+    FILENAME=$2
+    REMOTE=$3
+
+    echo "Backing up $FILENAME"
+    jobid=$(rclone rc sync/move --json '{"_async": true, "_filter": {"IncludeRule": ["'$FILENAME'"]}, "srcFs": "'$FILEPATH'", "dstFs": "'$REMOTE'"}' | jq .jobid)
+
+    done="false"
+    while [ $done == "false" ]; do
+	done=$(rclone rc job/status jobid=$jobid | jq .finished)
+	percent=$(rclone rc core/stats group=job/$jobid | jq '.transferring[0].percentage' )
+	if [ "$percent" != "null" ]; then
+	    echo "$FILENAME ... $percent%"
+	fi
+	sleep 1
+    done
+
+    success=$(rclone rc job/status jobid=$jobid | jq .success)
+    if [ $success == "true" ]; then
+	transfers=$(rclone rc core/stats group=job/$jobid | jq '.transfers' )
+	if [ $transfers == 0 ]; then
+	    echo "$FILENAME transfer tasks reports OK, but no files got sent. Error."
+	    exit 1
+	fi
+	
+	echo "$FILENAME done"
+	exit 0
+    fi
+
+    error=$(rclone rc job/status jobid=$jobid | jq .error)
+    echo "an error occured for $FILENAME ($error)"
+    exit 1
+}
+
+export -f send_file_and_monitor
+
+BACKUP_CMD="$SNAP_SEND_CMD | parallel --pipe --line-buffer -j3 --block 1.9G \"save_archive_to_disk {#}\" | parallel --lb -j3 \"send_file_and_monitor $ARCHIVE_SAVE_PATH {} $REMOTE\""
+
+echo $BACKUP_CMD
+
 eval $BACKUP_CMD
-$MOVE_CMD
-$SEND_CMD 1
-echo $CURRENTSNAP > $DESTPATH/$NAME/lastsnap
-rclone copy --ignore-checksum $DESTPATH/$NAME/lastsnap $REMOTE
-rm $DESTPATH/$NAME/tapedev
