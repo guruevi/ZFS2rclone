@@ -2,8 +2,8 @@
 NAME=$1
 SCRIPTPATH=~/code/ZFS2rclone
 DESTPATH=/tmp/backup
-MAX_TEMP_FILES=10
-MAX_ARCHIVE_SIZE=4
+export MAX_TEMP_FILES=5
+export MAX_ARCHIVE_SIZE=1.9G
 
 REMOTE=$2
 
@@ -42,34 +42,18 @@ echo Current snapshot: $CURRENTSNAP
 
 #TODO: IF Remote $SNAPSHOT already exist, most likely that's a previous failure. Move or delete that remote snapshot and rewrite it from scratch
 
-SNAP_SEND_CMD="zfs send $INCREMENT $NAME@$CURRENTSNAP"
-
 export ARCHIVE_SAVE_PATH="$DESTPATH/$NAME/$CURRENTSNAP"
 mkdir -p $ARCHIVE_SAVE_PATH
 export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
-save_archive_to_disk () {
-    ret=9999999
-    while [ $ret -gt 5 ]; do
-	ret=$(ls $ARCHIVE_SAVE_PATH/*.par 2>/dev/null | wc -l)
-	echo "waiting for more space" 1>&2
-	sleep 5;
-    done
-
-    /bin/cat - > $ARCHIVE_SAVE_PATH/$1.par
-    echo "$1.par saved to disk." 1>&2
-    echo "$1.par"
-}
-
-export -f save_archive_to_disk
-
-send_file_and_monitor () {
-    FILEPATH=$1
-    FILENAME=$2
-    REMOTE=$3
+split_backup_monitor_archive () {
+    FILENAME=$1.par
+    
+    /bin/cat -  > $ARCHIVE_SAVE_PATH/$FILENAME
+    echo "$FILENAME saved to disk." 1>&2
 
     echo "Backing up $FILENAME"
-    jobid=$(rclone rc sync/move --json '{"_async": true, "_filter": {"IncludeRule": ["'$FILENAME'"]}, "srcFs": "'$FILEPATH'", "dstFs": "'$REMOTE'"}' | jq .jobid)
+    jobid=$(rclone rc sync/move --json '{"_async": true, "_filter": {"IncludeRule": ["'$FILENAME'"]}, "srcFs": "'$ARCHIVE_SAVE_PATH'", "dstFs": "'$REMOTE'"}' | jq .jobid)
 
     done="false"
     while [ $done == "false" ]; do
@@ -98,9 +82,11 @@ send_file_and_monitor () {
     exit 1
 }
 
-export -f send_file_and_monitor
 
-BACKUP_CMD="$SNAP_SEND_CMD | parallel --pipe --line-buffer -j3 --block 1.9G \"save_archive_to_disk {#}\" | parallel --lb -j3 \"send_file_and_monitor $ARCHIVE_SAVE_PATH {} $REMOTE\""
+export -f split_backup_monitor_archive
+ 
+SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
+BACKUP_CMD="$SNAP_SEND_CMD | parallel --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
 
 echo $BACKUP_CMD
 
