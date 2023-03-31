@@ -2,7 +2,7 @@
 NAME=$1
 SCRIPTPATH=~/code/ZFS2rclone
 DESTPATH=/tmp/backup
-export MAX_TEMP_FILES=1
+export MAX_TEMP_FILES=5
 export MAX_ARCHIVE_SIZE=1.9G
 export REMOTE=$2
 
