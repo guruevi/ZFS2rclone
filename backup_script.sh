@@ -20,6 +20,7 @@ copy_or_move_file () {
     SRC=$1
     DEST=$2
     ACTION=$3
+    ERRORS_ARE_OK=${4:-""}
     
     SRC_FILENAME=$(basename $SRC)
     SRC_FS=$(dirname $SRC)
@@ -49,22 +50,25 @@ copy_or_move_file () {
     done
 
     success=$(rclone rc job/status jobid=$jobid | jq .success)
-    if [ $success == "true" ]; then
-	json_response=$(rclone rc core/stats group=job/$jobid)
-	exit_if_error $? "stats after success"
-	transfers=$(echo $json_response | jq '.transfers' )
-	if [ $transfers == 0 ]; then
-	    echo "$FILENAME transfer tasks reports OK, but no files got sent. Error."
-	    exit 1
-	fi
+    if [ "$success" == "false" ] && [ -z "$ERRORS_ARE_OK" ]; then
+	json_response=$(rclone rc job/status jobid=$jobid)
+	exit_if_error $? "status"
+	error=$(echo $json_response | jq .error)
 	
-	echo "$FILENAME done"
-	exit 0
+	echo "an error occured for $FILENAME ($error)"
+	exit 1
     fi
 
-    error=$(rclone rc job/status jobid=$jobid | jq .error)
-    echo "an error occured for $FILENAME ($error)"
-    exit 1
+    json_response=$(rclone rc core/stats group=job/$jobid)
+    exit_if_error $? "stats after success"
+
+    transfers=$(echo $json_response | jq '.transfers' )
+    if [ "$transfers" == "0" ] && [ -z "$ERRORS_ARE_OK" ]; then
+	echo "$FILENAME transfer tasks reports OK, but no files got sent. Error."
+	exit 1
+    fi
+	
+    echo "$FILENAME done"
 }
 
 export -f exit_if_error
@@ -87,22 +91,19 @@ export -f split_backup_monitor_archive
 
 
 
-
 if [[ -z $NAME ]]; then
    echo "No ZFS Volume specified"
    exit 1
 fi
 
 
-
 mkdir -p ${DESTPATH}/${NAME}
 
 
 touch $LASTSNAPFILE
-
-copy_or_move_file $REMOTE_LASTSNAPFILE $DESTPATH/$NAME "copyfile"
+copy_or_move_file $REMOTE_LASTSNAPFILE $DESTPATH/$NAME "copyfile" "errors_are_ok"
 cat $LASTSNAPFILE
-LASTSNAP=$(cat ${DESTPATH}/${NAME}/lastsnap 2>/dev/null)
+LASTSNAP=$(cat ${DESTPATH}/${NAME}/lastsnap)
 
 zfs list -Hpr -t snapshot -d 1 $NAME > $DESTPATH/$NAME/snapshot_list
 CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
@@ -136,16 +137,13 @@ export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
 trap "echo bye; exit 1" TERM
 
-
-
 SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
+echo $SNAP_SEND_CMD
+echo "toto"
 BACKUP_CMD="$SNAP_SEND_CMD | parallel --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
 
 eval $BACKUP_CMD
 exit_if_error $?
 
 echo $CURRENTSNAP > $LASTSNAPFILE
-copy_or_move_file $LASTSNAPFILE $REMOTE "movefile"
-
-
-exit $?
+copy_or_move_file $LASTSNAPFILE $(dirname $REMOTE) "movefile"
