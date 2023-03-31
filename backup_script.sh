@@ -77,7 +77,7 @@ export -f copy_or_move_file
 split_backup_monitor_archive () {
     trap "echo bye; exit 1" TERM
 
-    FILENAME=$1.par
+    FILENAME=$(printf "%08d"  $1).par
     export TOP_PID=$$
 
     /bin/cat -  > $ARCHIVE_SAVE_PATH/$FILENAME
