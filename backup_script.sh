@@ -13,7 +13,7 @@ export REMOTE_LASTSNAPFILE="$REMOTE/$NAME/lastsnap"
 
 exit_if_error () {
     
-    [ $1 -gt 0 ] && echo "Exiting... ($2)" && kill -s TERM $TOP_PID
+    [ $1 -gt 0 ] && echo "Exiting... ($2)" >&2 && kill -s TERM $TOP_PID
 }
 
 copy_or_move_file () {
@@ -25,10 +25,10 @@ copy_or_move_file () {
     SRC_FILENAME=$(basename $SRC)
     SRC_FS=$(dirname $SRC)
     
-    echo "mkdir to $REMOTE"
+    echo "mkdir to $REMOTE" >&2
     json_response=$(rclone rc operations/mkdir --json '{"remote": "", "fs": "'$DEST'"}')
     exit_if_error $?
-    echo "Backing up $FILENAME to $REMOTE"
+    echo "Backing up $FILENAME to $REMOTE" >&2
     json_response=$(rclone rc operations/$ACTION --json '{"_async": true, "srcFs": "'$SRC_FS'", "srcRemote": "'$SRC_FILENAME'", "dstFs": "'$DEST'", "dstRemote": "'$SRC_FILENAME'"}')
     exit_if_error $?
     jobid=$(echo $json_response | jq .jobid)
@@ -37,13 +37,14 @@ copy_or_move_file () {
     while [ "$done" == "false" ]; do
 	json_response=$(rclone rc job/status jobid=$jobid)
 	exit_if_error $? "status"
+	
 	done=$(echo $json_response | jq .finished)
 
 	json_response=$(rclone rc core/stats group=job/$jobid)
 	exit_if_error $? "stats"
 	percent=$(rclone rc core/stats group=job/$jobid | jq '.transferring[0].percentage' )
 	if [ "$percent" != "null" ]; then
-	    echo "$FILENAME ... $percent%"
+	    echo "$FILENAME ... $percent%" >&2
 	fi
 	
 	sleep 1
@@ -55,7 +56,7 @@ copy_or_move_file () {
 	exit_if_error $? "status"
 	error=$(echo $json_response | jq .error)
 	
-	echo "an error occured for $FILENAME ($error)"
+	echo "an error occured for $FILENAME ($error)" >&2
 	exit 1
     fi
 
@@ -64,11 +65,11 @@ copy_or_move_file () {
 
     transfers=$(echo $json_response | jq '.transfers' )
     if [ "$transfers" == "0" ] && [ -z "$ERRORS_ARE_OK" ]; then
-	echo "$FILENAME transfer tasks reports OK, but no files got sent. Error."
+	echo "$FILENAME transfer tasks reports OK, but no files got sent. Error." >&2
 	exit 1
     fi
 	
-    echo "$FILENAME done"
+    echo "$FILENAME:backedup successfully"
 }
 
 export -f exit_if_error
@@ -81,7 +82,7 @@ split_backup_monitor_archive () {
     export TOP_PID=$$
 
     /bin/cat -  > $ARCHIVE_SAVE_PATH/$FILENAME
-    echo "$FILENAME saved to disk."
+    echo "$FILENAME:saved to disk"
 
     copy_or_move_file $ARCHIVE_SAVE_PATH/$FILENAME $REMOTE "movefile"
     exit $?
@@ -92,14 +93,12 @@ export -f split_backup_monitor_archive
 
 
 if [[ -z $NAME ]]; then
-   echo "No ZFS Volume specified"
+   echo "No ZFS Volume specified" >&2
    exit 1
 fi
 
 
 mkdir -p ${DESTPATH}/${NAME}
-
-
 touch $LASTSNAPFILE
 copy_or_move_file $REMOTE_LASTSNAPFILE $DESTPATH/$NAME "copyfile" "errors_are_ok"
 cat $LASTSNAPFILE
@@ -110,16 +109,16 @@ CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '
 
 
 if [[ -z $CURRENTSNAP ]]; then
-  echo "There are no snapshots for this volume"
+  echo "There are no snapshots for this volume" >&2
   exit 1
 fi
 
 # Find out if we ran this before
 if [[ ! -z $LASTSNAP ]]; then
-  echo Last snapshot: $LASTSNAP
+  echo Last snapshot: $LASTSNAP >&2
   INCREMENT="-I $LASTSNAP"
   if [[ $CURRENTSNAP = $LASTSNAP ]]; then
-     echo "Snapshot is the same as the last backup"
+     echo "Snapshot is the same as the last backup" >&2
      exit 0
   fi
 else
@@ -127,7 +126,7 @@ else
   # Pick the last snapshot
 fi
 
-echo Current snapshot: $CURRENTSNAP
+echo Current snapshot: $CURRENTSNAP >&2
 
 #TODO: IF Remote $SNAPSHOT already exist, most likely that's a previous failure. Move or delete that remote snapshot and rewrite it from scratch
 export ARCHIVE_SAVE_PATH="$DESTPATH/$NAME/$CURRENTSNAP"
