@@ -137,7 +137,10 @@ mkdir -p $ARCHIVE_SAVE_PATH
 
 export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
-trap "echo bye; exit 1" TERM
+
+
+
+trap "echo bye; kill $RCLONE_PID exit 1" TERM
 
 SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
 BACKUP_CMD="$SNAP_SEND_CMD | parallel --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
