@@ -149,4 +149,8 @@ eval $BACKUP_CMD
 exit_if_error $?
 
 echo $CURRENTSNAP > $LASTSNAPFILE
+touch /tmp/completed
+copy_or_move_file $COMPLETED $REMOTE
 copy_or_move_file $LASTSNAPFILE $(dirname $REMOTE) "movefile"
+
+kill $RCLONE_PID
