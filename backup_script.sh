@@ -141,8 +141,9 @@ export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
 trap "echo bye; kill $RCLONE_PID exit 1" TERM
 
+export JOBLOG=/tmp/backup-$NAME-CURRENTSNAP.joblog
 SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
-BACKUP_CMD="$SNAP_SEND_CMD | parallel --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
+BACKUP_CMD="$SNAP_SEND_CMD | parallel --joblog $JOBLOG --resume-failed --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
 
 eval $BACKUP_CMD
 exit_if_error $?
