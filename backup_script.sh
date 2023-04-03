@@ -107,7 +107,7 @@ copy_or_move_file $REMOTE_LASTSNAPFILE $DESTPATH/$NAME "copyfile" "errors_are_ok
 cat $LASTSNAPFILE
 LASTSNAP=$(cat ${DESTPATH}/${NAME}/lastsnap)
 
-zfs list -Hpr -t snapshot -d 1 $NAME > $DESTPATH/$NAME/snapshot_list
+zfs list -Hpr -t snapshot -d 1 $NAME | grep daily > $DESTPATH/$NAME/snapshot_list
 CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
 
 
