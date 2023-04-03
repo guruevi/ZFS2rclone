@@ -97,6 +97,9 @@ if [[ -z $NAME ]]; then
    exit 1
 fi
 
+rclone rcd --rc-no-auth --config /home/nodemo/.config/rclone/rclone.conf &
+RCLONE_PID=$!
+
 
 mkdir -p ${DESTPATH}/${NAME}
 touch $LASTSNAPFILE
