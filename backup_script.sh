@@ -10,15 +10,17 @@ export REMOTE_LASTSNAPFILE="$REMOTE/$NAME/lastsnap"
 
 
 
-exit_if_error () {
-    
-    [ $1 -gt 0 ] && echo "Exiting... ($2)" >&2 && kill -s TERM $TOP_PID
+exit_if_error () {    
+    if [ $1 -gt 0 ]; then
+	echo "Exiting... ($2)" >&2
+	kill -s TERM $TOP_PID
+    fi
 }
 
 copy_or_move_file () {
     SRC=$1
     DEST=$2
-    ACTION=$3
+    ACTION=${3:-"copyfile"}
     ERRORS_ARE_OK=${4:-""}
     
     SRC_FILENAME=$(basename $SRC)
@@ -97,8 +99,9 @@ if [[ -z $NAME ]]; then
 fi
 
 rclone rcd --rc-no-auth --config /home/nodemo/.config/rclone/rclone.conf &
-RCLONE_PID=$!
-
+export RCLONE_PID=$!
+echo $RCLONE_PID
+sleep 5
 
 mkdir -p ${DESTPATH}/${NAME}
 touch $LASTSNAPFILE
@@ -109,6 +112,7 @@ LASTSNAP=$(cat ${DESTPATH}/${NAME}/lastsnap)
 zfs list -Hpr -t snapshot -d 1 $NAME | grep daily > $DESTPATH/$NAME/snapshot_list
 CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
 
+export TOP_PID=$$
 
 if [[ -z $CURRENTSNAP ]]; then
   echo "There are no snapshots for this volume" >&2
@@ -138,10 +142,9 @@ export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
 
 
 
+trap "echo bye; kill $RCLONE_PID; exit 1" TERM
 
-trap "echo bye; kill $RCLONE_PID exit 1" TERM
-
-export JOBLOG=/tmp/backup-$NAME-CURRENTSNAP.joblog
+export JOBLOG=/tmp/backup-${NAME/\//-}-CURRENTSNAP.joblog
 SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
 BACKUP_CMD="$SNAP_SEND_CMD | parallel --joblog $JOBLOG --resume-failed --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
 

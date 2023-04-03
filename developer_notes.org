@@ -12,4 +12,5 @@ Current status  of this script  is ... experimental. It will remain so until we 
 
 * Tasks
 
-** 
+** TODO allow script to backup and resume properly for suspend
+** TODO allow script  to resume when cancelled
