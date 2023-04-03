@@ -1,0 +1,15 @@
+#+title: Zfs2rclone
+#+filetags: Project
+#+category: Backup
+
+* Notes
+
+Current status  of this script  is ... experimental. It will remain so until we have a good backup and restore  that puts  in place a few things :
+** play nice with zfs-auto-snapshot
+** allow for restoring a chain of snapshots that is complete
+** can survive a suspend and resume
+
+
+* Tasks
+
+** 
