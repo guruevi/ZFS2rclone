@@ -1,20 +1,26 @@
 #!/bin/bash
-NAME=$1
-DESTPATH=/tmp/backup
-export MAX_TEMP_FILES=5
-export MAX_ARCHIVE_SIZE=1.9G
-export REMOTE=$2
 
-LASTSNAPFILE=${DESTPATH}/${NAME}/lastsnap
-export REMOTE_LASTSNAPFILE="$REMOTE/$NAME/lastsnap"
+set -x
+usage () {
+    echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ] [ -n <dataset_name> ] [ -r <backup_name> ] <backup|get_chain|restore>" >&2
 
+    exit 2
+}
 
 
-exit_if_error () {    
-    if [ $1 -gt 0 ]; then
+
+exit_if_error () {
+    if [ "$1" -gt "0" ]; then
 	echo "Exiting... ($2)" >&2
 	kill -s TERM $TOP_PID
     fi
+}
+
+is_snapshot_complete () {
+    rclone cat $1/completed
+    exit_if_error $!
+
+    echo "completed"
 }
 
 copy_or_move_file () {
@@ -26,10 +32,10 @@ copy_or_move_file () {
     SRC_FILENAME=$(basename $SRC)
     SRC_FS=$(dirname $SRC)
     
-    echo "mkdir to $REMOTE" >&2
+    echo "mkdir to $DEST" >&2
     json_response=$(rclone rc operations/mkdir --json '{"remote": "", "fs": "'$DEST'"}')
     exit_if_error $?
-    echo "Backing up $FILENAME to $REMOTE" >&2
+    echo "Backing up $SRC to $DEST" >&2
     json_response=$(rclone rc operations/$ACTION --json '{"_async": true, "srcFs": "'$SRC_FS'", "srcRemote": "'$SRC_FILENAME'", "dstFs": "'$DEST'", "dstRemote": "'$SRC_FILENAME'"}')
     exit_if_error $?
     jobid=$(echo $json_response | jq .jobid)
@@ -73,88 +79,190 @@ copy_or_move_file () {
     echo "$FILENAME:backedup successfully"
 }
 
-export -f exit_if_error
-export -f copy_or_move_file
 
 split_backup_monitor_archive () {
-    trap "echo bye; exit 1" TERM
-
-    FILENAME=$(printf "%08d"  $1).par
     export TOP_PID=$$
 
+    trap "echo bye; exit 1" TERM
+    
+    FILENAME=$(printf "%08d"  $1).par
     /bin/cat -  > $ARCHIVE_SAVE_PATH/$FILENAME
-    echo "$FILENAME:saved to disk"
+    echo "$FILENAME:saved to disk" >&2
 
     copy_or_move_file $ARCHIVE_SAVE_PATH/$FILENAME $REMOTE "movefile"
     exit $?
 }
 
 export -f split_backup_monitor_archive
+export -f exit_if_error
+export -f copy_or_move_file
+
+get_chain () {
+    remote=$1
+    snapshot=$2
+    end=0
+    snapshots=""
+    while [ $end -eq 0 ]; do
+	is_snapshot_complete $remote/$snapshot
+	exit_if_error $?
+	next_snapshot=$(rclone cat $remote/$snapshot/depends_on)
+	exit_if_error $? "cannot read depends_on file for $snapshot"
+	if [ $next_snapshot == "none" ]; then
+	    end=1;
+	fi
+	snapshots="$snapshot $snapshots"
+	snapshot=$next_snapshot
+    done
+
+    echo $snapshots
+}
+
+send_backup () {
+    remote=$1
+    snapshot=$2
+    rclone lsf --include "*.par" $remote/$snapshot | sort > /tmp/files
+    parallel -j5 -a /tmp/files -k "echo loading {} >&2; rclone cat $remote/$snapshot/{}"
+}
+
+
+#get_chain pcloud:backup/rpool/home znap_2023-04-04-0709_daily
+
+#send_backup pcloud:backup/rpool/home initial-backup
+
+
+prepare_backup_environment () {
+    if [ $LOCAL_RCLONE -eq 1 ]; then
+	rclone rcd --rc-no-auth --config $RCLONE_CONFIG_PATH &
+	export RCLONE_PID=$!
+	sleep 2
+    fi
+
+    mkdir -p $WORKDIR
+
+    rm -f $LOCAL_LASTSNAPFILE
+    touch $LOCAL_LASTSNAPFILE
+    copy_or_move_file $REMOTE_LASTSNAPFILE $WORKDIR "copyfile" "errors_are_ok"
+    LAST_KNOWN_SNAP=$(cat $LOCAL_LASTSNAPFILE)
+
+    CURRENTSNAP=$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }')
+
+    INCREMENT=""
+    if [ -z "$CURRENTSNAP" ]; then
+	echo "There are no snapshots for this volume" >&2
+	exit 1
+    fi
+
+    # Find out if we ran this before
+    if [ ! -z "$LAST_KNOWN_SNAP" ]; then
+	echo Last snapshot: $LAST_KNOWN_SNAP >&2
+	INCREMENT="-I $LASTSNAP"
+	if [ "$CURRENTSNAP" = "$LAST_KNOWN_SNAP" ]; then
+	    echo "Snapshot is the same as the last backup. Nothing to do." >&2
+	    exit 0
+	fi
+    fi
+
+    echo "Backing up snapshot : $CURRENTSNAP" >&2
+
+    export ARCHIVE_SAVE_PATH="$WORKDIR/$CURRENTSNAP"
+    mkdir -p $ARCHIVE_SAVE_PATH
+
+    export REMOTE="$REMOTE/$DATASET_NAME/$CURRENTSNAP"
+}
+
+
+backup_snapshot () {
+    trap "echo bye; kill $RCLONE_PID; exit 1" TERM
+
+    # We want a job, so that, if parallel finds it, it will restart where
+    # it left off. This is useful when a backup fails because the computer
+    # is shutdown or suspended mid backup.
+    JOBLOG=$ARCHIVE_SAVE_PATH/joblog
+    
+    zfs send -c $INCREMENT $DATASET_NAME@$CURRENTSNAP \
+	| parallel --joblog $JOBLOG \
+		   --resume-failed \
+		   --halt now,fail=1 \
+		   --pipe \
+		   --line-buffer \
+		   -j$CONCURRENCY \
+		   --block 1.9G \
+		   "split_backup_monitor_archive {#}"
+    
+    exit_if_error $PARALLEL_EXIT
+
+    COMPLETED=$WORKDIR/$CURRENTSNAP/completed
+    DEPENDS_ON=$WORKDIR/$CURRENTSNAP/depends_on
+    
+    echo $CURRENTSNAP > $LOCAL_LASTSNAPFILE
+    echo $LAST_KNOWN_SNAP > $DEPENDS_ON
+    touch $COMPLETED
+    copy_or_move_file $DEPENDS_ON $REMOTE "movefile"
+    copy_or_move_file $COMPLETED $REMOTE "movefile"
+
+    # LAST SNAP FILE goes one level up, so we use dirname for this.
+    copy_or_move_file $LOCAL_LASTSNAPFILE $(dirname $REMOTE) "movefile"
+}
+
+cleanup () {
+    rm $JOBLOG
+    kill $RCLONE_PID
+}
 
 
 
-if [[ -z $NAME ]]; then
-   echo "No ZFS Volume specified" >&2
-   exit 1
+# Set default variables and parse arguments
+LOCAL_RCLONE=1
+
+PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l: -- "$@")
+VALID_ARGUMENTS=$?
+if [ "$VALID_ARGUMENTS" != "0" ]; then
+  usage
 fi
 
-rclone rcd --rc-no-auth --config /home/nodemo/.config/rclone/rclone.conf &
-export RCLONE_PID=$!
-echo $RCLONE_PID
-sleep 5
+echo "PARSED_ARGUMENTS is $PARSED_ARGUMENTS"
+eval set -- "$PARSED_ARGUMENTS"
+while :
+do
+  case "$1" in
+      -j) CONCURRENCY="$2"            ; shift 2 ;;
+      -r) REMOTE="$2"                 ; shift 2 ;;
+      -d) RCLONE_ADDRESS="$2"; LOCAL_RCLONE=0 ; shift 2 ;;
+      -l) RCLONE_CONFIG_PATH="$2"     ; shift 2 ;;
+      
+    # -- means the end of the arguments; drop this, and break out of the while loop
+      --) shift; break ;;
+    # If invalid options were passed, then getopt should have reported an error,
+    # which we checked as VALID_ARGUMENTS when getopt was called...
+      *) echo "Unexpected option: $1"
+	 usage ;;
+  esac
+done
 
-mkdir -p ${DESTPATH}/${NAME}
-touch $LASTSNAPFILE
-copy_or_move_file $REMOTE_LASTSNAPFILE $DESTPATH/$NAME "copyfile" "errors_are_ok"
-cat $LASTSNAPFILE
-LASTSNAP=$(cat ${DESTPATH}/${NAME}/lastsnap)
+if [ $# -ne 2 ]; then
+    usage
+fi
 
-zfs list -Hpr -t snapshot -d 1 $NAME | grep daily > $DESTPATH/$NAME/snapshot_list
-CURRENTSNAP=`cat ${DESTPATH}/${NAME}/snapshot_list | tail -n 1 | awk -F"[@\t]" '{ print $2 }'`
+ACTION=$1
+export DATASET_NAME=$2
+export WORKDIR=/var/run/zfs2rclone/$DATASET_NAME
+
+export MAX_ARCHIVE_SIZE=1.9G
+
+export LOCAL_LASTSNAPFILE=$WORKDIR/lastsnap
+export REMOTE_LASTSNAPFILE="$REMOTE/$DATASET_NAME/lastsnap"
 
 export TOP_PID=$$
 
-if [[ -z $CURRENTSNAP ]]; then
-  echo "There are no snapshots for this volume" >&2
-  exit 1
-fi
-
-# Find out if we ran this before
-if [[ ! -z $LASTSNAP ]]; then
-  echo Last snapshot: $LASTSNAP >&2
-  INCREMENT="-I $LASTSNAP"
-  if [[ $CURRENTSNAP = $LASTSNAP ]]; then
-     echo "Snapshot is the same as the last backup" >&2
-     exit 0
-  fi
-else
-  INCREMENT=""
-  # Pick the last snapshot
-fi
-
-echo Current snapshot: $CURRENTSNAP >&2
-
-#TODO: IF Remote $SNAPSHOT already exist, most likely that's a previous failure. Move or delete that remote snapshot and rewrite it from scratch
-export ARCHIVE_SAVE_PATH="$DESTPATH/$NAME/$CURRENTSNAP"
-mkdir -p $ARCHIVE_SAVE_PATH
-
-export REMOTE="$REMOTE/$NAME/$CURRENTSNAP"
+case $ACTION in
+    backup) prepare_backup_environment
+	    backup_snapshot
+	    cleanup
+	    ;;
+    restore) restore_backup
+	     ;;
+    *) echo "Unexpected action: $1"
+       usage ;;
+esac
 
 
-
-trap "echo bye; kill $RCLONE_PID; exit 1" TERM
-
-export JOBLOG=/tmp/backup-${NAME/\//-}-CURRENTSNAP.joblog
-SNAP_SEND_CMD="zfs send -c $INCREMENT $NAME@$CURRENTSNAP"
-BACKUP_CMD="$SNAP_SEND_CMD | parallel --joblog $JOBLOG --resume-failed --halt now,fail=1 --pipe --line-buffer -j$MAX_TEMP_FILES --block 1.9G \"split_backup_monitor_archive {#}\""
-
-eval $BACKUP_CMD
-exit_if_error $?
-
-echo $CURRENTSNAP > $LASTSNAPFILE
-touch /tmp/completed
-copy_or_move_file /tmp/completed $REMOTE "movefile"
-copy_or_move_file $LASTSNAPFILE $(dirname $REMOTE) "movefile"
-
-rm $JOBLOG
-kill $RCLONE_PID
