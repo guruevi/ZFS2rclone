@@ -5,12 +5,33 @@
 * Notes
 
 Current status  of this script  is ... experimental. It will remain so until we have a good backup and restore  that puts  in place a few things :
-** play nice with zfs-auto-snapshot
+** DONE play nice with zfs-auto-snapshot systemd timer
+CLOSED: [2023-04-03 Mon 21:08]
 ** allow for restoring a chain of snapshots that is complete
-** can survive a suspend and resume
+** DONE can survive a suspend and resume
+CLOSED: [2023-04-03 Mon 21:08]
 
 
 * Tasks
 
-** TODO allow script to backup and resume properly for suspend
-** TODO allow script  to resume when cancelled
+** DONE allow script to backup and resume properly for suspend
+CLOSED: [2023-04-03 Mon 21:08]
+This is a bit tedious at the moment. Systemd-sleep suspend seems to somehow (not clear) to send a signal to living processes. "zfs send" cancelled itself when seeing that signal (which signal?). The manpage gives nothing regarding signal handling. On the otherhand, setting a "Restart=on-failure" in the systemd script is tricky because we also gonna recreate a new snapshot and restart from there.
+
+I need to either:
+*** find a way to bypass the signal (hard)
+*** play nicer with zfs-auto-snapshot-daily and trigger our own service or timer based on this one.
+
+See below
+
+** DONE investigate how to trigger a second service after the timer has kicked.
+CLOSED: [2023-04-03 Mon 21:08]
+Timer base services cannot use After or Before according to this [[https://unix.stackexchange.com/questions/216679/synchronize-systemd-unit-based-on-timers#comment384821_216679][stackoverflow question]]. This leaves us with playing with [[https://www.freedesktop.org/software/systemd/man/systemd.timer.html#RandomizedDelaySec=][RandomizedDelaySec]] but there is a chance that the start delay is 0. The script would trigger... nevermind. I may have foundd the solution.
+
+Our service should create a symlink in zfs-auto-snapshot-daily.wants/<our service>. This would ensure that when daily snapshot are started, we also starts the backup. <our service> should have an After=zfs-auto-snapshot-daily.service so that is is started AFTER zfs-auto-snapshot-daily has started to respect the order (started and not finished?)
+
+This is now done. Backup script is sleeping 5 seconds anyway for rclone to start. That is enough for zfs snapshots to be created.
+
+** DONE allow script  to resume when cancelled
+CLOSED: [2023-04-03 Mon 21:08]
+
