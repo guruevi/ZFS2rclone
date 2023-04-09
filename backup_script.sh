@@ -147,8 +147,9 @@ prepare_backup_environment () {
     if [ -z "$LAST_KNOWN_SNAP" ]; then
        LAST_KNOWN_SNAP="none"
     fi
-    
-    CURRENTSNAP=$(SNAPSHOT_NAME:-$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }'))
+
+    echo $SNAPSHOT_NAME
+    CURRENTSNAP=${SNAPSHOT_NAME:-$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }')}
 
     INCREMENT=""
     if [ -z "$CURRENTSNAP" ]; then
@@ -157,7 +158,7 @@ prepare_backup_environment () {
     fi
 
     # Find out if we ran this before
-    if [ ! -z "$LAST_KNOWN_SNAP" ]; then
+    if [ "$LAST_KNOWN_SNAP" != "none" ]; then
 	echo Last snapshot: $LAST_KNOWN_SNAP >&2
 	INCREMENT="-I $LASTSNAP"
 	if [ "$CURRENTSNAP" = "$LAST_KNOWN_SNAP" ]; then
