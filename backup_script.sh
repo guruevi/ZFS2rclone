@@ -135,7 +135,7 @@ prepare_backup_environment () {
     if [ $LOCAL_RCLONE -eq 1 ]; then
 	rclone rcd --rc-no-auth --config $RCLONE_CONFIG_PATH &
 	export RCLONE_PID=$!
-	sleep 2
+	sleep 4
     fi
 
     mkdir -p $WORKDIR
