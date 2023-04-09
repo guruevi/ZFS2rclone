@@ -180,7 +180,7 @@ backup_snapshot () {
     # is shutdown or suspended mid backup.
     JOBLOG=$ARCHIVE_SAVE_PATH/joblog
     
-    zfs send -c $INCREMENT $DATASET_NAME@$CURRENTSNAP \
+    zfs send --raw -c $INCREMENT $DATASET_NAME@$CURRENTSNAP \
 	| parallel --joblog $JOBLOG \
 		   --resume-failed \
 		   --halt now,fail=1 \
