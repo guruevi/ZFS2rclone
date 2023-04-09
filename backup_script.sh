@@ -144,7 +144,10 @@ prepare_backup_environment () {
     touch $LOCAL_LASTSNAPFILE
     copy_or_move_file $REMOTE_LASTSNAPFILE $WORKDIR "copyfile" "errors_are_ok"
     LAST_KNOWN_SNAP=$(cat $LOCAL_LASTSNAPFILE)
-
+    if [ -z "$LAST_KNOWN_SNAP" ]; then
+       LAST_KNOWN_SNAP="none"
+    fi
+       
     CURRENTSNAP=$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }')
 
     INCREMENT=""
