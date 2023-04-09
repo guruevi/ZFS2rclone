@@ -2,7 +2,7 @@
 
 set -x
 usage () {
-    echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ]  [ -r <backup_name> ] <backup|restore> <dataset_name>" >&2
+    echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ]  [ -r <rclone_remote_name> ] [ -s <snapshot_name> ] <backup|restore> <dataset_name>" >&2
 
     exit 2
 }
@@ -147,8 +147,8 @@ prepare_backup_environment () {
     if [ -z "$LAST_KNOWN_SNAP" ]; then
        LAST_KNOWN_SNAP="none"
     fi
-       
-    CURRENTSNAP=$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }')
+    
+    CURRENTSNAP=$(SNAPSHOT_NAME:-$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }'))
 
     INCREMENT=""
     if [ -z "$CURRENTSNAP" ]; then
@@ -218,7 +218,7 @@ cleanup () {
 # Set default variables and parse arguments
 LOCAL_RCLONE=1
 
-PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l: -- "$@")
+PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l:s: -- "$@")
 VALID_ARGUMENTS=$?
 if [ "$VALID_ARGUMENTS" != "0" ]; then
   usage
@@ -233,6 +233,7 @@ do
       -r) REMOTE="$2"                 ; shift 2 ;;
       -d) RCLONE_ADDRESS="$2"; LOCAL_RCLONE=0 ; shift 2 ;;
       -l) RCLONE_CONFIG_PATH="$2"     ; shift 2 ;;
+      -s) SNAPSHOT_NAME="$2"          ; shift 2 ;;
       
     # -- means the end of the arguments; drop this, and break out of the while loop
       --) shift; break ;;
