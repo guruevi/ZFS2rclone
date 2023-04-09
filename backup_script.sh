@@ -2,7 +2,7 @@
 
 set -x
 usage () {
-    echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ] [ -n <dataset_name> ] [ -r <backup_name> ] <backup|get_chain|restore>" >&2
+    echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ]  [ -r <backup_name> ] <backup|get_chain|restore> <dataset_name>" >&2
 
     exit 2
 }
@@ -117,11 +117,15 @@ get_chain () {
     echo $snapshots
 }
 
-send_backup () {
-    remote=$1
-    snapshot=$2
-    rclone lsf --include "*.par" $remote/$snapshot | sort > /tmp/files
-    parallel -j5 -a /tmp/files -k "echo loading {} >&2; rclone cat $remote/$snapshot/{}"
+restore_backup () {
+
+    DATASET=$(echo $DATASET_NAME | cut -d@ -f1)
+    SNAPSHOT=$(echo $DATASET_NAME | cut -d@ -f2)
+    
+    mkdir -p $WORKDIR
+
+    rclone lsf --include "*.par" $REMOTE/$DATASET/$SNAPSHOT | sort > $WORKDIR/files
+    parallel --retries 4 -j1 -a $WORKDIR/files -k "echo loading {} >&2; rclone cat $REMOTE/${DATASET_NAME/@/\/}/{}"
 }
 
 
@@ -220,7 +224,7 @@ if [ "$VALID_ARGUMENTS" != "0" ]; then
   usage
 fi
 
-echo "PARSED_ARGUMENTS is $PARSED_ARGUMENTS"
+echo "PARSED_ARGUMENTS is $PARSED_ARGUMENTS" >&2
 eval set -- "$PARSED_ARGUMENTS"
 while :
 do
@@ -245,7 +249,7 @@ fi
 
 ACTION=$1
 export DATASET_NAME=$2
-export WORKDIR=/var/run/zfs2rclone/$DATASET_NAME
+export WORKDIR=/var/run/zfs2rclone/${DATASET_NAME/@/\/}
 
 export MAX_ARCHIVE_SIZE=1.9G
 
