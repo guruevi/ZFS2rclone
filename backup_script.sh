@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 usage () {
     echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ]  [ -r <rclone_remote_name> ] [ -s <snapshot_name> ] <backup|restore> <dataset_name>" >&2
 
@@ -97,7 +97,7 @@ export -f copy_or_move_file
 
 get_chain () {
     DATASET=$(echo $DATASET_NAME | cut -d@ -f1)
-    SNAPSHOT=$(echo $DATASET_NAME | cut -d@ -f2)
+    SNAPSHOT=${SNAPSHOT_NAME}
 
 
     end=0
@@ -148,7 +148,7 @@ prepare_backup_environment () {
        LAST_KNOWN_SNAP="none"
     fi
 
-    echo $SNAPSHOT_NAME
+    echo $SNAPSHOT_NAME >&2
     CURRENTSNAP=${SNAPSHOT_NAME:-$(zfs list -Hpr -t snapshot -d 1 $DATASET_NAME | grep daily |  tail -n 1 | awk -F"[@\t]" '{ print $2 }')}
 
     INCREMENT=""
@@ -160,7 +160,7 @@ prepare_backup_environment () {
     # Find out if we ran this before
     if [ "$LAST_KNOWN_SNAP" != "none" ]; then
 	echo Last snapshot: $LAST_KNOWN_SNAP >&2
-	INCREMENT="-I $LASTSNAP"
+	INCREMENT="-I $LAST_KNOWN_SNAP"
 	if [ "$CURRENTSNAP" = "$LAST_KNOWN_SNAP" ]; then
 	    echo "Snapshot is the same as the last backup. Nothing to do." >&2
 	    exit 0
@@ -267,9 +267,7 @@ case $ACTION in
 	    ;;
     restore) get_chain
 	     for SNAPSHOT in $SNAPSHOTS; do
-		 if [ "$SNAPSHOT" != "initial-backup" ]; then
-		     restore_backup $SNAPSHOT
-		 fi
+		 restore_backup $SNAPSHOT
 	     done
 	     ;;
     *) echo "Unexpected action: $1"
