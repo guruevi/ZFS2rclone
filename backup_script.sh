@@ -74,7 +74,7 @@ copy_or_move_file () {
 	exit 1
     fi
 	
-    echo "$FILENAME:backedup successfully"
+    echo "$FILENAME:backedup successfully" >&2
 }
 
 
@@ -128,7 +128,7 @@ restore_backup () {
     mkdir -p $WORKDIR
 
     rclone lsf --include "*.par" $REMOTE/$DATASET/$SNAPSHOT | sort > $WORKDIR/files
-    parallel --retries 4 -j1 -a $WORKDIR/files -k "echo loading {} >&2; rclone cat $REMOTE/${DATASET}/$SNAPSHOT/{}"
+    parallel --retries 4 -j1 -a $WORKDIR/files -k "echo loading {} >&2; rclone cat $REMOTE/${DATASET}/$SNAPSHOT/{}" | eval "$RESTORE_COMMAND"
 }
 
 prepare_backup_environment () {
@@ -219,7 +219,7 @@ cleanup () {
 # Set default variables and parse arguments
 LOCAL_RCLONE=1
 
-PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l:s: -- "$@")
+PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l:s:c: -- "$@")
 VALID_ARGUMENTS=$?
 if [ "$VALID_ARGUMENTS" != "0" ]; then
   usage
@@ -235,7 +235,7 @@ do
       -d) RCLONE_ADDRESS="$2"; LOCAL_RCLONE=0 ; shift 2 ;;
       -l) RCLONE_CONFIG_PATH="$2"     ; shift 2 ;;
       -s) SNAPSHOT_NAME="$2"          ; shift 2 ;;
-      
+      -c) RESTORE_COMMAND="$2"        ; shift 2 ;;
     # -- means the end of the arguments; drop this, and break out of the while loop
       --) shift; break ;;
     # If invalid options were passed, then getopt should have reported an error,
