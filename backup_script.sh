@@ -8,7 +8,6 @@ usage () {
 }
 
 
-
 exit_if_error () {
     if [ "$1" -gt "0" ]; then
 	echo "Exiting... ($2)" >&2
