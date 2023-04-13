@@ -1,6 +1,5 @@
 #!/bin/bash
 
-#set -x
 usage () {
     echo "usage: backup [ -j <int|0> ] [ -d <rclone server address> ] [ -l <rclone config path> ]  [ -r <rclone_remote_name> ] [ -s <snapshot_name> ] <backup|restore> <dataset_name>" >&2
 
@@ -31,7 +30,7 @@ copy_or_move_file () {
     
     echo "mkdir to $DEST" >&2
     json_response=$(rclone rc operations/mkdir --json '{"remote": "", "fs": "'$DEST'"}')
-    exit_if_error $?
+ 
     echo "Backing up $SRC to $DEST" >&2
     json_response=$(rclone rc operations/$ACTION --json '{"_async": true, "srcFs": "'$SRC_FS'", "srcRemote": "'$SRC_FILENAME'", "dstFs": "'$DEST'", "dstRemote": "'$SRC_FILENAME'"}')
     exit_if_error $?
@@ -105,16 +104,22 @@ get_chain () {
     while [ $end -eq 0 ]; do
 	is_snapshot_complete $REMOTE/$DATASET/$snapshot
 	exit_if_error $?
-	next_snapshot=$(rclone cat $REMOTE/$DATASET/$snapshot/depends_on)
-	exit_if_error $? "cannot read depends_on file for $snapshot"
-	if [ $next_snapshot == "none" ]; then
-	    end=1;
+	snapshots="$snapshot $snapshots"
+	if [ $snapshot = "$FIRST_SNAPSHOT" ]; then
+	    end=1
 	fi
 	echo "snapshot $snapshot added to the queue" >&2
-	snapshots="$snapshot $snapshots"
+	
+	next_snapshot=$(rclone cat $REMOTE/$DATASET/$snapshot/depends_on)
+	exit_if_error $? "cannot read depends_on file for $snapshot"
 	snapshot=$next_snapshot
+
+	if [ $next_snapshot = "none" ]; then
+	    end=1
+	fi
     done
 
+    echo $snapshots >&2
     export SNAPSHOTS=$snapshots
 }
 
@@ -193,7 +198,7 @@ backup_snapshot () {
 		   --block 1.9G \
 		   "split_backup_monitor_archive {#}"
     
-    exit_if_error $PARALLEL_EXIT
+    exit_if_error $?
 
     COMPLETED=$WORKDIR/$CURRENTSNAP/completed
     DEPENDS_ON=$WORKDIR/$CURRENTSNAP/depends_on
@@ -218,12 +223,12 @@ cleanup () {
 # Set default variables and parse arguments
 LOCAL_RCLONE=1
 
-PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l:s:c: -- "$@")
+PARSED_ARGUMENTS=$(getopt -a -n backup -o j:r:d:l:s:c:f: -- "$@")
 VALID_ARGUMENTS=$?
 if [ "$VALID_ARGUMENTS" != "0" ]; then
   usage
 fi
-
+FIRST_SNAPSHOT=""
 echo "PARSED_ARGUMENTS is $PARSED_ARGUMENTS" >&2
 eval set -- "$PARSED_ARGUMENTS"
 while :
@@ -235,6 +240,7 @@ do
       -l) RCLONE_CONFIG_PATH="$2"     ; shift 2 ;;
       -s) SNAPSHOT_NAME="$2"          ; shift 2 ;;
       -c) RESTORE_COMMAND="$2"        ; shift 2 ;;
+      -f) FIRST_SNAPSHOT="$2"         ; shift 2 ;;
     # -- means the end of the arguments; drop this, and break out of the while loop
       --) shift; break ;;
     # If invalid options were passed, then getopt should have reported an error,
@@ -266,6 +272,7 @@ case $ACTION in
 	    ;;
     restore) get_chain
 	     for SNAPSHOT in $SNAPSHOTS; do
+		 echo "Restoring $SNAPSHOT"
 		 restore_backup $SNAPSHOT
 	     done
 	     ;;
